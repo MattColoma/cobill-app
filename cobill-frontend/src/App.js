@@ -10,10 +10,15 @@ import RegisterPage from './components/RegisterPage';
 import LoginPage from './components/LoginPage';
 
 // URL de tu backend
-const API_URL = 'http://localhost:5000/api';
+//const API_URL = 'http://localhost:5000/api';
+
+// Cambia esto:
+// let socket = io('http://localhost:5000');
+// A esto (usando la URL de tu servicio web de Render):
+let socket = io('https://cobill-backend-api.onrender.com'); // Sin '/api' aquí, solo la base de la URL
 
 // La conexión de Socket.IO se gestionará aquí
-let socket;
+//let socket;
 
 function App() {
   const [loading, setLoading] = useState(true);
