@@ -1,22 +1,21 @@
 // backend/src/models/usuarioModel.js
 
-const sql = require('mssql');
+// CAMBIO AQUÍ: Importamos el pool de conexiones de PostgreSQL
 const pool = require('../config/db');
-const bcrypt = require('bcryptjs'); // Importar bcryptjs para hashear contraseñas
+const bcrypt = require('bcryptjs'); // Necesario para hashear y comparar contraseñas
 
 class Usuario {
     /**
      * Obtiene todos los usuarios de la base de datos.
-     * @returns {Promise<Array>} Un array de objetos de usuario (sin la contraseña).
+     * @returns {Promise<Array>} Un array de objetos de usuario.
      */
     static async getAll() {
         try {
-            const request = pool.request();
-            // No seleccionar la contraseña para getAll por seguridad
-            const result = await request.query('SELECT id, nombre, email, fecha_registro FROM usuario');
-            return result.recordset;
+            // CAMBIO AQUÍ: Usamos pool.query directamente para PostgreSQL
+            const result = await pool.query('SELECT id, nombre, email, fecha_registro FROM usuario');
+            return result.rows; // CAMBIO AQUÍ: Los resultados están en 'rows' para pg
         } catch (error) {
-            console.error("Error al obtener todos los usuarios:", error.message);
+            console.error("Error al obtener todos los usuarios (PostgreSQL):", error.message);
             throw error;
         }
     }
@@ -24,88 +23,76 @@ class Usuario {
     /**
      * Obtiene un usuario por su ID.
      * @param {number} id - El ID del usuario a buscar.
-     * @returns {Promise<Object|undefined>} El objeto de usuario si se encuentra (sin la contraseña), o undefined.
+     * @returns {Promise<Object|undefined>} El objeto de usuario si se encuentra, o undefined.
      */
     static async getById(id) {
         try {
-            const request = pool.request();
-            request.input('id', sql.Int, id);
-            // No seleccionar la contraseña para getById por seguridad
-            const result = await request.query('SELECT id, nombre, email, fecha_registro FROM usuario WHERE id = @id');
-            return result.recordset[0];
+            // CAMBIO AQUÍ: Usamos placeholders $1, $2, etc., y pasamos los valores en un array
+            const result = await pool.query('SELECT id, nombre, email, fecha_registro FROM usuario WHERE id = $1', [id]);
+            return result.rows[0]; // Retorna el primer resultado (o undefined si no hay)
         } catch (error) {
-            console.error(`Error al obtener usuario con ID ${id}:`, error.message);
+            console.error(`Error al obtener usuario con ID ${id} (PostgreSQL):`, error.message);
             throw error;
         }
     }
 
     /**
-     * Obtiene un usuario por su email.
-     * Este método es crucial para la autenticación, ya que permite verificar las credenciales.
-     * @param {string} email - El email del usuario a buscar.
-     * @returns {Promise<Object|undefined>} El objeto de usuario si se encuentra (incluyendo la contraseña hasheada), o undefined.
+     * Obtiene un usuario por su dirección de email.
+     * @param {string} email - La dirección de email del usuario a buscar.
+     * @returns {Promise<Object|undefined>} El objeto de usuario si se encuentra, o undefined.
      */
     static async getByEmail(email) {
         try {
-            const request = pool.request();
-            request.input('email', sql.NVarChar, email);
-            // Aquí sí seleccionamos la contraseña para poder compararla
-            const result = await request.query('SELECT id, nombre, email, password, fecha_registro FROM usuario WHERE email = @email');
-            return result.recordset[0];
+            const result = await pool.query('SELECT id, nombre, email, password, fecha_registro FROM usuario WHERE email = $1', [email]);
+            return result.rows[0];
         } catch (error) {
-            console.error(`Error al obtener usuario por email ${email}:`, error.message);
+            console.error(`Error al obtener usuario con email ${email} (PostgreSQL):`, error.message);
             throw error;
         }
     }
 
     /**
-     * Crea un nuevo usuario en la base de datos con la contraseña hasheada.
+     * Crea un nuevo usuario en la base de datos.
      * @param {string} nombre - El nombre del usuario.
-     * @param {string} email - El email del usuario (debe ser único).
-     * @param {string} password - La contraseña del usuario (se hasheará antes de guardar).
-     * @returns {Promise<Object>} Un objeto con el ID del nuevo usuario y sus datos (sin la contraseña hasheada).
+     * @param {string} email - La dirección de email del usuario.
+     * @param {string} plainPassword - La contraseña sin hashear.
+     * @returns {Promise<Object>} Un objeto con el ID del nuevo usuario y sus datos.
      */
-    static async create(nombre, email, password) {
+    static async create(nombre, email, plainPassword) {
         try {
-            // Hashear la contraseña antes de guardarla en la base de datos
-            const salt = await bcrypt.genSalt(10); // Generar un "salt" (cadena aleatoria)
-            const hashedPassword = await bcrypt.hash(password, salt); // Hashear la contraseña con el salt
+            // Hashear la contraseña antes de guardarla
+            const hashedPassword = await bcrypt.hash(plainPassword, 10); // 10 es el costo del salt
 
-            const request = pool.request();
-            request.input('nombre', sql.NVarChar, nombre);
-            request.input('email', sql.NVarChar, email);
-            request.input('password', sql.NVarChar, hashedPassword); // Guardar la contraseña hasheada
-            
-            const result = await request.query(`
-                INSERT INTO usuario (nombre, email, password)
-                VALUES (@nombre, @email, @password);
-                SELECT SCOPE_IDENTITY() AS id;
-            `);
-            // Retornar el usuario sin la contraseña hasheada por seguridad
-            return { id: result.recordset[0].id, nombre, email };
+            // CAMBIO AQUÍ: PostgreSQL usa RETURNING id para obtener el ID generado
+            const result = await pool.query(
+                'INSERT INTO usuario (nombre, email, password) VALUES ($1, $2, $3) RETURNING id',
+                [nombre, email, hashedPassword]
+            );
+            // El ID generado está en result.rows[0].id
+            return { id: result.rows[0].id, nombre, email };
         } catch (error) {
-            console.error("Error al crear un nuevo usuario:", error.message);
+            console.error("Error al crear un nuevo usuario (PostgreSQL):", error.message);
             throw error;
         }
     }
 
     /**
-     * Actualiza la información de un usuario existente (sin cambiar la contraseña).
+     * Actualiza un usuario existente por su ID.
      * @param {number} id - El ID del usuario a actualizar.
      * @param {string} nombre - El nuevo nombre del usuario.
-     * @param {string} email - El nuevo email del usuario.
+     * @param {string} email - La nueva dirección de email del usuario.
      * @returns {Promise<boolean>} True si el usuario fue actualizado, false en caso contrario.
      */
     static async update(id, nombre, email) {
         try {
-            const request = pool.request();
-            request.input('id', sql.Int, id);
-            request.input('nombre', sql.NVarChar, nombre);
-            request.input('email', sql.NVarChar, email);
-            const result = await request.query('UPDATE usuario SET nombre = @nombre, email = @email WHERE id = @id');
-            return result.rowsAffected[0] > 0;
+            const result = await pool.query(
+                'UPDATE usuario SET nombre = $1, email = $2 WHERE id = $3',
+                [nombre, email, id]
+            );
+            // rowCount indica cuántas filas fueron afectadas por la operación
+            return result.rowCount > 0;
         } catch (error) {
-            console.error(`Error al actualizar usuario con ID ${id}:`, error.message);
+            console.error(`Error al actualizar usuario con ID ${id} (PostgreSQL):`, error.message);
             throw error;
         }
     }
@@ -117,12 +104,10 @@ class Usuario {
      */
     static async delete(id) {
         try {
-            const request = pool.request();
-            request.input('id', sql.Int, id);
-            const result = await request.query('DELETE FROM usuario WHERE id = @id');
-            return result.rowsAffected[0] > 0;
+            const result = await pool.query('DELETE FROM usuario WHERE id = $1', [id]);
+            return result.rowCount > 0;
         } catch (error) {
-            console.error(`Error al eliminar usuario con ID ${id}:`, error.message);
+            console.error(`Error al eliminar usuario con ID ${id} (PostgreSQL):`, error.message);
             throw error;
         }
     }

@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
-const dbPool = require('./config/db');
+const dbPool = require('./config/db'); // Importa el pool de PostgreSQL
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -27,7 +27,7 @@ app.use(express.json());
 
 // Manejo de errores del pool de la base de datos
 dbPool.on('error', err => {
-    console.error('Error en el pool de la base de datos:', err);
+    console.error('Error en el pool de la base de datos PostgreSQL:', err);
 });
 
 // Importar el middleware de autenticación
@@ -45,8 +45,6 @@ const participanteSesionRoutes = require('./routes/participanteSesionRoutes')(io
 const itemGastoRoutes = require('./routes/itemGastoRoutes')(io);
 
 // Aplicar el middleware de autenticación a las rutas protegidas
-// Todas las rutas que comienzan con /api/sesiones, /api/participantes-sesion, /api/items-gasto
-// ahora requerirán un JWT válido.
 app.use('/api/sesiones', authMiddleware, sesionGastoRoutes);
 app.use('/api/participantes-sesion', authMiddleware, participanteSesionRoutes);
 app.use('/api/items-gasto', authMiddleware, itemGastoRoutes);

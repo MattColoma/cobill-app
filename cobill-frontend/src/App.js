@@ -23,6 +23,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null); // Almacenará { id, nombre, email }
   const [token, setToken] = useState(localStorage.getItem('token')); // Intentar cargar token del localStorage
+  const [authChecked, setAuthChecked] = useState(false); // Nuevo estado para saber si la verificación inicial terminó
 
   // Estados globales para la lógica de Cobill
   const [currentView, setCurrentView] = useState('home'); // 'home', 'create_session', 'active_session', 'register', 'login'
@@ -54,7 +55,7 @@ function App() {
 
       socket.on('connect', () => {
         console.log('Frontend: Conectado a Socket.IO con ID:', socket.id);
-        setLoading(false);
+        // setLoading(false); // Lo moveremos después de la verificación de autenticación
       });
 
       socket.on('disconnect', () => {
@@ -94,31 +95,38 @@ function App() {
         console.log('Frontend: Evento sesion:totales_actualizados recibido:', data);
         setSesionTotals(data);
       });
-    } else {
-      if (socket.connected) {
-        setLoading(false);
-      }
     }
 
     // Al cargar la app, verificar si hay un token y si es válido
-    const verifyToken = async () => {
+    const verifyAuthToken = async () => {
       const storedToken = localStorage.getItem('token');
       if (storedToken) {
-        // En un escenario real, harías una llamada a una API de backend
-        // para verificar la validez del token y obtener los datos del usuario.
-        // Por ahora, asumimos que si hay un token, el usuario está autenticado.
-        // Opcional: podrías decodificar el token para obtener el ID y email
-        // const decoded = jwt_decode(storedToken); // Necesitarías instalar jwt-decode
-        setIsAuthenticated(true);
-        // setUser({ id: decoded.id, email: decoded.email }); // Si decodificas
-        setLoading(false);
+        try {
+          const response = await axios.get(`${API_URL}/auth/verify-token`);
+          setIsAuthenticated(true);
+          setUser(response.data.user);
+          setToken(storedToken); // Asegurarse de que el token esté en el estado
+          setCurrentView('home'); // Si el token es válido, ir a la página de inicio
+          console.log('Frontend: Autenticación verificada exitosamente.');
+        } catch (err) {
+          console.error('Frontend: Error al verificar token:', err.response?.data?.message || err.message);
+          localStorage.removeItem('token'); // Limpiar token inválido/expirado
+          setIsAuthenticated(false);
+          setUser(null);
+          setToken(null);
+          setCurrentView('login'); // Si el token es inválido, ir a la página de login
+        }
       } else {
         setIsAuthenticated(false);
-        setLoading(false);
+        setUser(null);
+        setToken(null);
+        setCurrentView('login'); // Si no hay token, ir a la página de login
       }
+      setLoading(false); // La carga inicial ha terminado
+      setAuthChecked(true); // La verificación de autenticación ha terminado
     };
 
-    verifyToken();
+    verifyAuthToken();
 
     return () => {
       if (socket) {
@@ -126,7 +134,7 @@ function App() {
         socket = null;
       }
     };
-  }, []);
+  }, []); // Dependencia vacía para que se ejecute solo una vez al montar
 
   // useEffect para cargar ítems y totales cuando la sesión se activa/cambia
   useEffect(() => {
@@ -146,16 +154,15 @@ function App() {
         } finally {
           setLoading(false);
         }
-      } else if (currentView !== 'active_session') {
+      } else if (currentView !== 'active_session' && authChecked) { // Solo si la autenticación ya fue verificada
         setLoading(false);
       }
     };
 
     loadSessionData();
-  }, [sesionDetails, currentView]);
+  }, [sesionDetails, currentView, authChecked]); // Dependencia de authChecked
 
   // --- Funciones de Autenticación ---
-  // CORRECCIÓN AQUÍ: Cambiar 'name' por 'nombre' en el argumento y en el cuerpo de la solicitud
   const handleRegister = async (nombre, email, password) => {
     try {
       const response = await axios.post(`${API_URL}/auth/register`, { nombre, email, password });
@@ -178,7 +185,7 @@ function App() {
       setToken(token);
       setUser(user);
       setIsAuthenticated(true);
-      setCurrentView('home');
+      setCurrentView('home'); // Redirigir a la página de inicio después del login
       return { success: true, message: response.data.message };
     } catch (err) {
       console.error('Error en el inicio de sesión:', err.response?.data?.message || err.message);
@@ -187,12 +194,12 @@ function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('token'); // Eliminar el token de localStorage
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
-    setCurrentView('login');
-    setSesionDetails(null);
+    setCurrentView('login'); // Redirigir al login después del logout
+    setSesionDetails(null); // Limpiar datos de sesión al cerrar sesión
     setParticipanteDetails(null);
     setSesionCode('');
     setSesionItems([]);
@@ -206,7 +213,7 @@ function App() {
     try {
       const response = await axios.post(`${API_URL}/sesiones`, {
         nombre_sesion: nombreSesion || 'Nueva Sesión de Gastos',
-        id_usuario_creador: user ? user.id : null,
+        id_usuario_creador: user ? user.id : null, // Usar el ID del usuario autenticado
         porcentaje_propina: parseFloat(porcentajePropina)
       });
       console.log('Frontend: Respuesta de crear sesión recibida:', response.data);
@@ -231,8 +238,8 @@ function App() {
     try {
       const response = await axios.post(`${API_URL}/participantes-sesion/unirse`, {
         codigo_gasto: code.toUpperCase(),
-        id_usuario: isAuthenticated ? user.id : null,
-        nombre_invitado: isAuthenticated ? user.nombre : participantName
+        id_usuario: isAuthenticated ? user.id : null, // Pasar id_usuario si está autenticado
+        nombre_invitado: isAuthenticated ? user.nombre : participantName // Usar nombre de usuario o el proporcionado
       });
       setSesionDetails(response.data.sesion);
       setParticipanteDetails(response.data.participante);
@@ -285,20 +292,28 @@ function App() {
     console.log('Frontend: Saliendo de la sesión. Volviendo a la vista de inicio.');
   };
 
-  if (loading) return <div className="text-center p-4 text-white">Cargando aplicación...</div>;
-  if (error) return <div className="text-red-500 p-4 text-white">Error: {error}</div>;
-
+  // Renderizado condicional basado en el estado de autenticación y si la verificación terminó
   const renderView = () => {
+    if (loading || !authChecked) { // Muestra "Cargando" hasta que la verificación de autenticación termine
+      return <div className="text-center p-4 text-white">Cargando aplicación...</div>;
+    }
+
+    if (error) {
+      return <div className="text-red-500 p-4 text-white">Error: {error}</div>;
+    }
+
+    // Si no está autenticado, mostrar login o registro
     if (!isAuthenticated) {
       switch (currentView) {
         case 'register':
           return <RegisterPage onRegister={handleRegister} onGoToLogin={() => setCurrentView('login')} />;
         case 'login':
-        default:
+        default: // Por defecto, si no está autenticado, ir al login
           return <LoginPage onLogin={handleLogin} onGoToRegister={() => setCurrentView('register')} />;
       }
     }
 
+    // Si está autenticado, mostrar las vistas de la aplicación principal
     switch (currentView) {
       case 'home':
         return (
@@ -355,10 +370,10 @@ function App() {
         </div>
         {isAuthenticated && currentView !== 'login' && currentView !== 'register' && (
           <div className="flex justify-between items-center mb-4">
-            <span className="text-gray-700 text-s mr-2">Hola, {user?.nombre || user?.email || 'Usuario'}!</span>
+            <span className="text-gray-700 text-sm">Hola, {user?.nombre || user?.email || 'Usuario'}!</span>
             <button
               onClick={handleLogout}
-              className="px-4 py-2 text-gray-700 hover:underline"
+              className="bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded-md text-sm shadow-sm"
             >
               Cerrar Sesión
             </button>

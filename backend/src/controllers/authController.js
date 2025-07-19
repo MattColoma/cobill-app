@@ -14,12 +14,10 @@ const jwtSecret = process.env.JWT_SECRET || 'supersecretjwtkey'; // Usar una cla
 exports.register = async (req, res) => {
     const { nombre, email, password } = req.body;
 
-    // <-- Depuración: Muestra los datos que el backend recibe
-    console.log('Backend: Datos recibidos para registro:', { nombre, email, password: password ? '******' : 'N/A' });
+    console.log('Backend: Datos recibidos para registro:', { nombre, email, password: password ? '******' : 'N/A' }); // <-- Depuración
 
     if (!nombre || !email || !password) {
-        // <-- Depuración: Indica que la validación falló
-        console.error('Backend: Campos requeridos faltantes para registro.');
+        console.error('Backend: Campos requeridos faltantes para registro.'); // <-- Depuración
         return res.status(400).json({ message: 'Todos los campos son requeridos.' });
     }
 
@@ -27,7 +25,7 @@ exports.register = async (req, res) => {
         // Verificar si el usuario ya existe
         const existingUser = await Usuario.getByEmail(email);
         if (existingUser) {
-            console.warn('Backend: Intento de registro con email ya existente:', email);
+            console.warn('Backend: Intento de registro con email ya existente:', email); // <-- Depuración
             return res.status(409).json({ message: 'El email ya está registrado.' });
         }
 
@@ -40,7 +38,7 @@ exports.register = async (req, res) => {
             { expiresIn: '1h' } // El token expira en 1 hora
         );
 
-        console.log('Backend: Usuario registrado exitosamente. ID:', newUser.id);
+        console.log('Backend: Usuario registrado exitosamente. ID:', newUser.id); // <-- Depuración
         res.status(201).json({
             message: 'Usuario registrado exitosamente.',
             token,
@@ -60,12 +58,10 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     const { email, password } = req.body;
 
-    // <-- Depuración: Muestra los datos que el backend recibe
-    console.log('Backend: Datos recibidos para login:', { email, password: password ? '******' : 'N/A' });
+    console.log('Backend: Datos recibidos para login:', { email, password: password ? '******' : 'N/A' }); // <-- Depuración
 
     if (!email || !password) {
-        // <-- Depuración: Indica que la validación falló
-        console.error('Backend: Email o contraseña faltantes para login.');
+        console.error('Backend: Email o contraseña faltantes para login.'); // <-- Depuración
         return res.status(400).json({ message: 'Email y contraseña son requeridos.' });
     }
 
@@ -73,14 +69,14 @@ exports.login = async (req, res) => {
         // Buscar el usuario por email
         const user = await Usuario.getByEmail(email);
         if (!user) {
-            console.warn('Backend: Intento de login con email no encontrado:', email);
+            console.warn('Backend: Intento de login con email no encontrado:', email); // <-- Depuración
             return res.status(401).json({ message: 'Credenciales inválidas.' }); // Email no encontrado
         }
 
         // Comparar la contraseña proporcionada con la contraseña hasheada
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            console.warn('Backend: Intento de login con contraseña incorrecta para email:', email);
+            console.warn('Backend: Intento de login con contraseña incorrecta para email:', email); // <-- Depuración
             return res.status(401).json({ message: 'Credenciales inválidas.' }); // Contraseña incorrecta
         }
 
@@ -91,7 +87,7 @@ exports.login = async (req, res) => {
             { expiresIn: '1h' } // El token expira en 1 hora
         );
 
-        console.log('Backend: Inicio de sesión exitoso para usuario ID:', user.id);
+        console.log('Backend: Inicio de sesión exitoso para usuario ID:', user.id); // <-- Depuración
         res.status(200).json({
             message: 'Inicio de sesión exitoso.',
             token,
@@ -100,5 +96,29 @@ exports.login = async (req, res) => {
     } catch (error) {
         console.error('Backend: Error al iniciar sesión:', error.message);
         res.status(500).json({ message: 'Error interno del servidor al iniciar sesión.' });
+    }
+};
+
+/**
+ * Verifica la validez del token JWT y devuelve los datos del usuario.
+ * Este endpoint estará protegido por authMiddleware.
+ * @param {Object} req - Objeto de solicitud de Express (req.user contendrá los datos del usuario del token).
+ * @param {Object} res - Objeto de respuesta de Express.
+ */
+exports.verifyToken = async (req, res) => {
+    try {
+        // Si llegamos aquí, el authMiddleware ya ha verificado el token y ha adjuntado el usuario a req.user
+        const user = await Usuario.getById(req.user.id); // Obtener datos completos del usuario desde la BD
+        if (!user) {
+            return res.status(404).json({ message: 'Usuario no encontrado en la base de datos.' });
+        }
+        // Devolver solo la información segura del usuario (sin contraseña)
+        res.status(200).json({
+            message: 'Token válido.',
+            user: { id: user.id, nombre: user.nombre, email: user.email }
+        });
+    } catch (error) {
+        console.error('Backend: Error al verificar token:', error.message);
+        res.status(500).json({ message: 'Error interno del servidor al verificar token.' });
     }
 };

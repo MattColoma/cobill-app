@@ -1,7 +1,7 @@
 // backend/src/models/participanteSesionModel.js
 
-const sql = require('mssql');
-const pool = require('../config/db'); // Ruta al archivo db.js
+// CAMBIO AQUÍ: Importamos el pool de conexiones de PostgreSQL
+const pool = require('../config/db');
 
 class ParticipanteSesion {
     /**
@@ -13,24 +13,20 @@ class ParticipanteSesion {
      */
     static async create(id_sesion_gasto, id_usuario = null, nombre_invitado = null) {
         try {
-            const request = pool.request();
-            request.input('id_sesion_gasto', sql.Int, id_sesion_gasto);
-            request.input('id_usuario', sql.Int, id_usuario);
-            request.input('nombre_invitado', sql.NVarChar(100), nombre_invitado);
-
-            const result = await request.query(`
-                INSERT INTO ParticipanteSesion (id_sesion_gasto, id_usuario, nombre_invitado)
-                VALUES (@id_sesion_gasto, @id_usuario, @nombre_invitado);
-                SELECT SCOPE_IDENTITY() AS id;
-            `);
+            // CAMBIO AQUÍ: PostgreSQL usa RETURNING id para obtener el ID generado
+            const result = await pool.query(
+                `INSERT INTO "ParticipanteSesion" (id_sesion_gasto, id_usuario, nombre_invitado)
+                 VALUES ($1, $2, $3) RETURNING id`,
+                [id_sesion_gasto, id_usuario, nombre_invitado]
+            );
             return {
-                id: result.recordset[0].id,
+                id: result.rows[0].id, // CAMBIO AQUÍ: El ID está en result.rows[0].id
                 id_sesion_gasto,
                 id_usuario,
                 nombre_invitado
             };
         } catch (error) {
-            console.error("Error al crear un nuevo participante de sesión:", error.message);
+            console.error("Error al crear un nuevo participante de sesión (PostgreSQL):", error.message);
             throw error;
         }
     }
@@ -43,22 +39,22 @@ class ParticipanteSesion {
      */
     static async getBySesionId(id_sesion_gasto) {
         try {
-            const request = pool.request();
-            request.input('id_sesion_gasto', sql.Int, id_sesion_gasto);
-            const result = await request.query(`
-                SELECT
+            // CAMBIO AQUÍ: Usamos COALESCE para PostgreSQL en lugar de ISNULL
+            const result = await pool.query(
+                `SELECT
                     ps.id,
                     ps.id_sesion_gasto,
                     ps.id_usuario,
-                    ISNULL(u.nombre, ps.nombre_invitado) AS nombre_participante, -- Muestra nombre de usuario o invitado
+                    COALESCE(u.nombre, ps.nombre_invitado) AS nombre_participante, -- Muestra nombre de usuario o invitado
                     ps.fecha_union
-                FROM ParticipanteSesion ps
-                LEFT JOIN usuario u ON ps.id_usuario = u.id
-                WHERE ps.id_sesion_gasto = @id_sesion_gasto
-            `);
-            return result.recordset;
+                FROM "ParticipanteSesion" ps
+                LEFT JOIN "usuario" u ON ps.id_usuario = u.id
+                WHERE ps.id_sesion_gasto = $1`,
+                [id_sesion_gasto]
+            );
+            return result.rows; // CAMBIO AQUÍ: Los resultados están en 'rows'
         } catch (error) {
-            console.error(`Error al obtener participantes para la sesión ${id_sesion_gasto}:`, error.message);
+            console.error(`Error al obtener participantes para la sesión ${id_sesion_gasto} (PostgreSQL):`, error.message);
             throw error;
         }
     }
@@ -70,22 +66,22 @@ class ParticipanteSesion {
      */
     static async getById(id) {
         try {
-            const request = pool.request();
-            request.input('id', sql.Int, id);
-            const result = await request.query(`
-                SELECT
+            // CAMBIO AQUÍ: Usamos COALESCE para PostgreSQL
+            const result = await pool.query(
+                `SELECT
                     ps.id,
                     ps.id_sesion_gasto,
                     ps.id_usuario,
-                    ISNULL(u.nombre, ps.nombre_invitado) AS nombre_participante,
+                    COALESCE(u.nombre, ps.nombre_invitado) AS nombre_participante,
                     ps.fecha_union
-                FROM ParticipanteSesion ps
-                LEFT JOIN usuario u ON ps.id_usuario = u.id
-                WHERE ps.id = @id
-            `);
-            return result.recordset[0];
+                FROM "ParticipanteSesion" ps
+                LEFT JOIN "usuario" u ON ps.id_usuario = u.id
+                WHERE ps.id = $1`,
+                [id]
+            );
+            return result.rows[0]; // CAMBIO AQUÍ: Los resultados están en 'rows'
         } catch (error) {
-            console.error(`Error al obtener participante con ID ${id}:`, error.message);
+            console.error(`Error al obtener participante con ID ${id} (PostgreSQL):`, error.message);
             throw error;
         }
     }

@@ -1,7 +1,6 @@
 // backend/src/models/itemGastoModel.js
 
-const sql = require('mssql');
-const pool = require('../config/db'); // Ruta al archivo db.js
+const pool = require('../config/db');
 
 class ItemGasto {
     /**
@@ -13,24 +12,20 @@ class ItemGasto {
      */
     static async create(id_participante_sesion, descripcion_item, costo_item) {
         try {
-            const request = pool.request();
-            request.input('id_participante_sesion', sql.Int, id_participante_sesion);
-            request.input('descripcion_item', sql.NVarChar(255), descripcion_item);
-            request.input('costo_item', sql.Decimal(10,2), costo_item);
-
-            const result = await request.query(`
-                INSERT INTO ItemGasto (id_participante_sesion, descripcion_item, costo_item)
-                VALUES (@id_participante_sesion, @descripcion_item, @costo_item);
-                SELECT SCOPE_IDENTITY() AS id;
-            `);
+            // CAMBIO AQUÍ: PostgreSQL usa RETURNING id para obtener el ID generado
+            const result = await pool.query(
+                `INSERT INTO "ItemGasto" (id_participante_sesion, descripcion_item, costo_item)
+                 VALUES ($1, $2, $3) RETURNING id`,
+                [id_participante_sesion, descripcion_item, costo_item]
+            );
             return {
-                id: result.recordset[0].id,
+                id: result.rows[0].id, // CAMBIO AQUÍ: El ID está en result.rows[0].id
                 id_participante_sesion,
                 descripcion_item,
                 costo_item
             };
         } catch (error) {
-            console.error("Error al crear un nuevo ítem de gasto:", error.message);
+            console.error("Error al crear un nuevo ítem de gasto (PostgreSQL):", error.message);
             throw error;
         }
     }
@@ -42,12 +37,17 @@ class ItemGasto {
      */
     static async getByParticipanteId(id_participante_sesion) {
         try {
-            const request = pool.request();
-            request.input('id_participante_sesion', sql.Int, id_participante_sesion);
-            const result = await request.query('SELECT id, descripcion_item, costo_item, fecha_registro FROM ItemGasto WHERE id_participante_sesion = @id_participante_sesion');
-            return result.recordset;
+            const result = await pool.query(
+                'SELECT id, descripcion_item, costo_item, fecha_registro FROM "ItemGasto" WHERE id_participante_sesion = $1',
+                [id_participante_sesion]
+            );
+            // CAMBIO AQUÍ: Convertir costo_item a float
+            return result.rows.map(item => ({
+                ...item,
+                costo_item: parseFloat(item.costo_item)
+            }));
         } catch (error) {
-            console.error(`Error al obtener ítems para el participante ${id_participante_sesion}:`, error.message);
+            console.error(`Error al obtener ítems para el participante ${id_participante_sesion} (PostgreSQL):`, error.message);
             throw error;
         }
     }
@@ -60,28 +60,32 @@ class ItemGasto {
      */
     static async getBySesionId(id_sesion_gasto) {
         try {
-            const request = pool.request();
-            request.input('id_sesion_gasto', sql.Int, id_sesion_gasto);
-            const result = await request.query(`
-                SELECT
+            // CAMBIO AQUÍ: Usamos COALESCE para PostgreSQL en lugar de ISNULL
+            const result = await pool.query(
+                `SELECT
                     ig.id,
                     ig.descripcion_item,
                     ig.costo_item,
                     ig.fecha_registro,
                     ps.id AS participante_id,
-                    ISNULL(u.nombre, ps.nombre_invitado) AS nombre_participante,
+                    COALESCE(u.nombre, ps.nombre_invitado) AS nombre_participante,
                     sg.codigo_gasto,
                     sg.porcentaje_propina
-                FROM ItemGasto ig
-                JOIN ParticipanteSesion ps ON ig.id_participante_sesion = ps.id
-                JOIN SesionGasto sg ON ps.id_sesion_gasto = sg.id
-                LEFT JOIN usuario u ON ps.id_usuario = u.id
-                WHERE ps.id_sesion_gasto = @id_sesion_gasto
-                ORDER BY ps.id, ig.fecha_registro;
-            `);
-            return result.recordset;
+                FROM "ItemGasto" ig
+                JOIN "ParticipanteSesion" ps ON ig.id_participante_sesion = ps.id
+                JOIN "SesionGasto" sg ON ps.id_sesion_gasto = sg.id
+                LEFT JOIN "usuario" u ON ps.id_usuario = u.id
+                WHERE ps.id_sesion_gasto = $1
+                ORDER BY ps.id, ig.fecha_registro;`,
+                [id_sesion_gasto]
+            );
+            // CAMBIO AQUÍ: Convertir costo_item a float
+            return result.rows.map(item => ({
+                ...item,
+                costo_item: parseFloat(item.costo_item)
+            }));
         } catch (error) {
-            console.error(`Error al obtener ítems para la sesión ${id_sesion_gasto}:`, error.message);
+            console.error(`Error al obtener ítems para la sesión ${id_sesion_gasto} (PostgreSQL):`, error.message);
             throw error;
         }
     }
@@ -93,12 +97,14 @@ class ItemGasto {
      */
     static async getTotalByParticipante(id_participante_sesion) {
         try {
-            const request = pool.request();
-            request.input('id_participante_sesion', sql.Int, id_participante_sesion);
-            const result = await request.query('SELECT SUM(costo_item) AS total FROM ItemGasto WHERE id_participante_sesion = @id_participante_sesion');
-            return result.recordset[0].total || 0; // Retorna 0 si no hay ítems
+            const result = await pool.query(
+                'SELECT SUM(costo_item) AS total FROM "ItemGasto" WHERE id_participante_sesion = $1',
+                [id_participante_sesion]
+            );
+            // CAMBIO AQUÍ: Los resultados de agregación están en result.rows[0]
+            return parseFloat(result.rows[0].total) || 0; // Retorna 0 si no hay ítems
         } catch (error) {
-            console.error(`Error al calcular total para participante ${id_participante_sesion}:`, error.message);
+            console.error(`Error al calcular total para participante ${id_participante_sesion} (PostgreSQL):`, error.message);
             throw error;
         }
     }
@@ -110,34 +116,33 @@ class ItemGasto {
      */
     static async getTotalBySesion(id_sesion_gasto) {
         try {
-            const request = pool.request();
-            request.input('id_sesion_gasto', sql.Int, id_sesion_gasto);
-            const result = await request.query(`
-                SELECT
+            const result = await pool.query(
+                `SELECT
                     SUM(ig.costo_item) AS total_sin_propina,
                     sg.porcentaje_propina
-                FROM ItemGasto ig
-                JOIN ParticipanteSesion ps ON ig.id_participante_sesion = ps.id
-                JOIN SesionGasto sg ON ps.id_sesion_gasto = sg.id
-                WHERE ps.id_sesion_gasto = @id_sesion_gasto
-                GROUP BY sg.porcentaje_propina;
-            `);
+                FROM "ItemGasto" ig
+                JOIN "ParticipanteSesion" ps ON ig.id_participante_sesion = ps.id
+                JOIN "SesionGasto" sg ON ps.id_sesion_gasto = sg.id
+                WHERE ps.id_sesion_gasto = $1
+                GROUP BY sg.porcentaje_propina;`,
+                [id_sesion_gasto]
+            );
 
-            if (result.recordset.length === 0) {
+            if (result.rows.length === 0) {
                 return { total_sin_propina: 0, porcentaje_propina: 0, total_con_propina: 0 };
             }
 
-            const { total_sin_propina, porcentaje_propina } = result.recordset[0];
-            const propina_monto = (total_sin_propina * porcentaje_propina) / 100;
-            const total_con_propina = total_sin_propina + propina_monto;
+            const { total_sin_propina, porcentaje_propina } = result.rows[0];
+            const propina_monto = (parseFloat(total_sin_propina) * parseFloat(porcentaje_propina)) / 100;
+            const total_con_propina = parseFloat(total_sin_propina) + propina_monto;
 
             return {
                 total_sin_propina: parseFloat(total_sin_propina),
                 porcentaje_propina: parseFloat(porcentaje_propina),
-                total_con_propina: parseFloat(total_con_propina.toFixed(2)) // Redondea a 2 decimales
+                total_con_propina: parseFloat(total_con_propina.toFixed(2))
             };
         } catch (error) {
-            console.error(`Error al calcular total para sesión ${id_sesion_gasto}:`, error.message);
+            console.error(`Error al calcular total para sesión ${id_sesion_gasto} (PostgreSQL):`, error.message);
             throw error;
         }
     }
