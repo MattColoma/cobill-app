@@ -9,16 +9,15 @@ import ActiveSessionPage from './components/ActiveSessionPage';
 import RegisterPage from './components/RegisterPage';
 import LoginPage from './components/LoginPage';
 
-// URL de tu backend
-//const API_URL = 'http://localhost:5000/api';
+// CAMBIO CLAVE AQUÍ:
+// 1. Descomentado y correctamente definido para usar process.env.REACT_APP_API_URL
+// 2. Fallback a http://localhost:5000/api para desarrollo local
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-// Cambia esto:
-// let socket = io('http://localhost:5000');
-// A esto (usando la URL de tu servicio web de Render):
-let socket = io('https://cobill-backend-api.onrender.com'); // Sin '/api' aquí, solo la base de la URL
-
-// La conexión de Socket.IO se gestionará aquí
-//let socket;
+// CAMBIO CLAVE AQUÍ:
+// Declarar 'socket' fuera del componente pero sin inicializarlo aquí.
+// La inicialización se hará dentro del useEffect para asegurar que use la API_URL correcta.
+let socket;
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -54,9 +53,14 @@ function App() {
       }
     );
 
-    // Inicializar la conexión de Socket.IO solo si no existe
+    // CAMBIO CLAVE AQUÍ:
+    // Inicializar la conexión de Socket.IO dentro del useEffect.
+    // Esto asegura que 'socket' se inicialice después de que API_URL esté definida correctamente
+    // y solo una vez al montar el componente.
     if (!socket) {
-      socket = io('http://localhost:5000');
+      // Remover '/api' del final de API_URL para la conexión de Socket.IO
+      const socketUrl = API_URL.endsWith('/api') ? API_URL.slice(0, -4) : API_URL;
+      socket = io(socketUrl);
 
       socket.on('connect', () => {
         console.log('Frontend: Conectado a Socket.IO con ID:', socket.id);
@@ -81,14 +85,16 @@ function App() {
       });
 
       socket.on('sesion:item_agregado', async (data) => {
-        console.log('Frontend: Evento sesion:item_agregado recibido:', data);
+        console.log('Frontend: Evento sesion:item_agregado recibido. Recargando ítems y totales...');
         if (data.sesionId) {
           try {
             const itemsRes = await axios.get(`${API_URL}/items-gasto/sesion/${data.sesionId}`);
+            console.log('Frontend: Datos de ítems recargados por socket event:', itemsRes.data); // Depuración
             setSesionItems(itemsRes.data);
             const totalsRes = await axios.get(`${API_URL}/items-gasto/sesion/${data.sesionId}/total`);
+            console.log('Frontend: Datos de totales recargados por socket event:', totalsRes.data); // Depuración
             setSesionTotals(totalsRes.data);
-            console.log('Frontend: Ítems y totales recargados por socket event.');
+            console.log('Frontend: Ítems y totales recargados y estados actualizados por socket event.');
           } catch (fetchErr) {
             console.error('Frontend: Error al recargar ítems/totales por socket event:', fetchErr);
             setError('Error al actualizar datos de la sesión.');
@@ -97,7 +103,7 @@ function App() {
       });
 
       socket.on('sesion:totales_actualizados', (data) => {
-        console.log('Frontend: Evento sesion:totales_actualizados recibido:', data);
+        console.log('Frontend: Evento sesion:totales_actualizados recibido:', data); // Depuración
         setSesionTotals(data);
       });
     }
@@ -134,6 +140,7 @@ function App() {
     verifyAuthToken();
 
     return () => {
+      // Limpiar la conexión al desmontar el componente si existe
       if (socket) {
         socket.disconnect();
         socket = null;
@@ -149,8 +156,10 @@ function App() {
         console.log('Frontend: Cargando datos iniciales de la sesión activa...');
         try {
           const itemsRes = await axios.get(`${API_URL}/items-gasto/sesion/${sesionDetails.id}`);
+          console.log('Frontend: Datos iniciales de ítems cargados:', itemsRes.data); // Depuración
           setSesionItems(itemsRes.data);
           const totalsRes = await axios.get(`${API_URL}/items-gasto/sesion/${sesionDetails.id}/total`);
+          console.log('Frontend: Datos iniciales de totales cargados:', totalsRes.data); // Depuración
           setSesionTotals(totalsRes.data);
           console.log('Frontend: Datos de sesión activa cargados.');
         } catch (err) {
@@ -288,13 +297,17 @@ function App() {
   };
 
   const handleLeaveSession = () => {
+    localStorage.removeItem('token'); // Eliminar el token de localStorage
+    setToken(null);
+    setUser(null);
+    setIsAuthenticated(false);
     setSesionDetails(null);
     setParticipanteDetails(null);
     setSesionCode('');
     setSesionItems([]);
     setSesionTotals(null);
-    setCurrentView('home');
-    console.log('Frontend: Saliendo de la sesión. Volviendo a la vista de inicio.');
+    setCurrentView('login'); // Redirigir al login después del logout
+    console.log('Usuario ha cerrado sesión.');
   };
 
   // Renderizado condicional basado en el estado de autenticación y si la verificación terminó
