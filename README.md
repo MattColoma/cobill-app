@@ -1,6 +1,6 @@
 # Cobill App: Gestión de Gastos Compartidos.
 
-### ¡Bienvenido al repositorio de **Cobill App**! Cobill es una aplicación web diseñada para simplificar la gestión y división de gastos en grupo, ideal para amigos, familias o compañeros de viaje. Permite a los usuarios crear sesiones de gasto, unirse a ellas mediante un código único, añadir ítems consumidos y ver un resumen de los totales de la sesión.
+¡Bienvenido al repositorio de **Cobill App**! Cobill es una aplicación web diseñada para simplificar la gestión y división de gastos en grupo, ideal para amigos, familias o compañeros de viaje. Permite a los usuarios crear sesiones de gasto, unirse a ellas mediante un código único, añadir ítems consumidos y ver un resumen de los totales de la sesión.
 
 ## Características Principales
  Autenticación de Usuarios: Registro e inicio de sesión seguro (local con email/contraseña).
