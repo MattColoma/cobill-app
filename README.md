@@ -45,32 +45,6 @@ Axios: Cliente HTTP basado en promesas para realizar solicitudes a la API.
 
 Socket.IO Client: Librería cliente para comunicación en tiempo real con el backend.
 
-🏗️ Estructura del Proyecto
-cobill-app/
-├── backend/
-│   ├── src/
-│   │   ├── config/           # Configuración de la base de datos
-│   │   ├── controllers/      # Lógica de negocio de las APIs
-│   │   ├── middleware/       # Middlewares (ej. autenticación)
-│   │   ├── models/           # Modelos de base de datos
-│   │   ├── routes/           # Definición de rutas de la API
-│   │   ├── utils/            # Utilidades (ej. generador de códigos)
-│   │   └── server.js         # Archivo principal del servidor
-│   ├── .env.example          # Ejemplo de variables de entorno del backend
-│   ├── package.json
-│   └── README.md             # README específico del backend
-├── frontend/
-│   ├── public/               # Archivos estáticos (ej. logo)
-│   ├── src/
-│   │   ├── components/       # Componentes React (páginas, UI, etc.)
-│   │   ├── App.js            # Componente principal de la aplicación
-│   │   ├── index.js          # Punto de entrada de React
-│   │   └── index.css         # Estilos globales de Tailwind
-│   ├── tailwind.config.js
-│   ├── package.json
-│   └── README.md             # README específico del frontend
-└── README.md                 # Este archivo
-
 ⚙️ Configuración y Ejecución Local
 Para levantar la aplicación completa en tu entorno local, sigue estos pasos:
 
